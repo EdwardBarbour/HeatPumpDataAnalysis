@@ -206,3 +206,6 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 Inspect_DE_data.ipynb
+average_agile_tariff_UK.parquet
+ID_heat_elec.pkl
+Heat_pumps_electricity_in.csv
