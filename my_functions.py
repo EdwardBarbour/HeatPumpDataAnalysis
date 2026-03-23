@@ -12,7 +12,7 @@ def get_SPFs(df):
     IH = (df['Immersion_Heater_Energy_Consumed'].iloc[-1] - df['Immersion_Heater_Energy_Consumed'].iloc[0]) if 'Immersion_Heater_Energy_Consumed' in df.columns else 0
     BU = (df['Back-up_Heater_Energy_Consumed'].iloc[-1] - df['Back-up_Heater_Energy_Consumed'].iloc[0]) if 'Back-up_Heater_Energy_Consumed' in df.columns else 0
     
-    # SPF formulas (now unified for all cases)
+    # Calculate SPFs
     SPF_H2 = HP / (WS - CP - IH - BU)
     SPF_H3 = (HP + IH + BU) / (WS - CP)
     SPF_H4 = (HP + IH + BU) / WS
@@ -37,7 +37,7 @@ def create_heat_event_dict(df, HP_cap_2min):
     # --- infer mode per timestep ---
     sh = df['Heat_Pump_Heating_Flow_Temperature'].notna()
     hw = df['Hot_Water_Flow_Temperature'].notna()
-
+    # there should be no overlap between heat and hot water, but sometimes there is, so tidy up
     overlap = sh & hw
     if overlap.any():
         # print(f"Resolving {int(overlap.sum())} overlap timestep(s) → defaulting to hot water")
@@ -46,7 +46,7 @@ def create_heat_event_dict(df, HP_cap_2min):
     # masks after correction
     sh = df['Heat_Pump_Heating_Flow_Temperature'].notna()
     hw = df['Hot_Water_Flow_Temperature'].notna()
-
+    # create a new array to mark when the events are space and hot water
     mode = np.full(len(df), None, dtype=object)
     mode[sh.to_numpy()] = 'space_heat'
     mode[hw.to_numpy()] = 'hot_water'
@@ -67,6 +67,8 @@ def create_heat_event_dict(df, HP_cap_2min):
         start = i
         i += 1
 
+        # for each heating event, increment to find the end of that event
+        # note if the event changes type that is the end
         while i < n and heat_on[i] and (df['mode'].iloc[i] == this_mode):
             i += 1
 
@@ -77,7 +79,7 @@ def create_heat_event_dict(df, HP_cap_2min):
     heat_events = {}
     for j, (start, end, event_type) in enumerate(heat_event_inds):
         idx_slice = df.index[start:end]
-
+        # get the average over the event
         electricity = df.loc[idx_slice, 'Elec_in'].sum()
         heat        = df.loc[idx_slice, 'Heat_out'].sum()
         av_temp     = df.loc[idx_slice, 'External_Air_Temperature'].mean()
@@ -131,7 +133,6 @@ def create_heat_event_dict(df, HP_cap_2min):
     total_hw = df.loc[hw, 'Heat_out'].sum()
     
     # --- heat accounted for by detected events ---
-    # add a line to make sure this only happens if there is hot water or space heat - i.e. we don't divide by zero
     if total_sh > 0:
         sh_accounted_for = np.sum([heat_events[j]['heat'] for j in key_list if heat_events[j]['event_type'] == 'space_heat']) / total_sh
     else: 
@@ -140,14 +141,12 @@ def create_heat_event_dict(df, HP_cap_2min):
         hw_accounted_for = np.sum([heat_events[j]['heat'] for j in key_list if heat_events[j]['event_type'] == 'hot_water']) / total_hw
     else:
         hw_accounted_for = np.nan
+        
     # print("\n--- Heat accounting summary ---")
-    
     # print(f"Total space heat delivered: {total_sh:.2f}")
     # print(f"Space heat in events:       {total_sh * sh_accounted_for:.2f}")
-    # print(f"Space heat represented:     {100 * sh_accounted_for:.2f}%")
-    
+    # print(f"Space heat represented:     {100 * sh_accounted_for:.2f}%")111
     # print()
-    
     # print(f"Total hot water delivered:  {total_hw:.2f}")
     # print(f"Hot water in events:        {total_hw * hw_accounted_for:.2f}")
     # print(f"Hot water represented:      {100 * hw_accounted_for:.2f}%")
@@ -220,7 +219,7 @@ def fit_cop_models(
     n_fit_points=100,
 ):
     """
-    Filters COP data, fits inverse + linear COP models, selects best by R²
+    Filters COP data, fits inverse + linear COP models, selects best by R2
 
     Returns a dict with:
       - best_model_type ('inv' or 'lin')
@@ -261,7 +260,7 @@ def fit_cop_models(
     params_inv, _ = curve_fit(model_inverse, temp_exc_outliers, COP_exc_outliers)
     params_lin, _ = curve_fit(model_linear, temp_exc_outliers, COP_exc_outliers)
 
-    # Predictions + R²
+    # Predictions + R2
     pred_inv = model_inverse(temp_exc_outliers, *params_inv)
     pred_lin = model_linear(temp_exc_outliers, *params_lin)
 
